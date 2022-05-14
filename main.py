@@ -5,62 +5,27 @@ import click  # Tools per accettare parametri in input da riga di comando
 import re  # Modulo per regex
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
-#from nltk.tokenize import word_tokenize # Import della funzione di NLTK per fare la tokenizzazione per parole
-#from nltk.stem import WordNetLemmatizer
-
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from keras import Input, Model
+from keras.models import Sequential
+from keras.layers import Dense, Embedding, Flatten, Conv1D, Dropout, MaxPooling1D, concatenate
+from sklearn.model_selection import train_test_split
 import spacy
-from spacy.lang.it.examples import sentences
 
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1";
-
-"""
-# Il processo di 'tokenizzazione' è la suddivisione di un testo o una frase in più parti, dette appunto token.
-# E' possibile suddivire un testo in frasi, oppure una frase in parole (il nostro caso specifico).
-def sentence_tokeninze(sent):
-    word_tokenizer_output = word_tokenize(sent)
-    return word_tokenizer_output;
-
-# Il processo di 'lemmatizzazione' delle parole di una frase viene utilizzato per cercare di ricondurre diverse forme flesse allo stesso tema.
-# Ad esempio:se nella frase troviamo le parole “camminare”, “cammino”, “camminiamo”, “cammineremo”, la lemmatization le ricondurrà tutte al lemma (forma base, quella che troviamo sul vocabolario) “camminare”.
-def sentence_lemmatize(sent):
-    # Prima di utilizzare l'oggetto WornNetLemmatizer è necessarion installare i pacchetti di risorse 'wordnet' e 'omw-1.4' di nltk con il comando 'nltk.download()'
-    lemmatizer = WordNetLemmatizer()
-    # Prima di utilizzare la funzione word_tokenize dobbiamo installare il pacchetto di risorse 'punkt'
-    #word_list = nltk.word_tokenize(sent)
-    lemmatized_output = ' '.join([lemmatizer.lemmatize(word) for word in sent])
-    return lemmatized_output
-
-# Recupero i parametri dalla libreria Click e li processo
-#@click.command()
-#@click.option('--input-files', '-m', prompt='Insert input file paths divided them by \',\' character')
-def preprocessing(input_files):
-    paths = input_files.split(", ")
-    for file_path in paths:
-        print("Reading Training Set File at: " + file_path)
-        # Utilizzo il separatore '\t' proprio del file .tsv
-        file = pd.read_csv(file_path,
-                           header=None, sep="\t",
-                           engine='python',
-                           error_bad_lines=False,
-                           warn_bad_lines=False)  # Esempio di path: data/train/haspeede_FB-train.tsv
-        # Cancello la prima colonna (che contiene gli ID, non utili alla nostra analisi)
-        file.drop(file.columns[[0, 0]], axis=1, inplace=True)
-        print("- Training Set File infos:" % file.columns, file.shape, len(file))
-
-        # Preprocesso il file
-        print("-PREPROCESSO IL FILE:")
-        with open(file_path, "r", encoding ="utf8") as f:
-            reader = csv.reader(f, delimiter="\t")
-            for i, line in enumerate(reader):
-                #FIN QUI
-                sent = sentence_clean(line[1])
-                tokens = sentence_tokeninze(sent)
-                print(sent +" -> "+ sentence_lemmatize(tokens) + " == "+ line[2])
-                #for t in tokens:
-                #    print("- "+t)
-"""
+VERSION = '0.0.1.2'
+EMBEDDING_DIM = 64
+# MAX_SEQUENCE_LENGTH = 500
+MAX_SEQUENCE_LENGTH = 408
+# MAX_SEQUENCE_LENGTH = 12
+# MAX_SEQUENCE_LENGTH = 396
+EPOCHS = 100
+BATCH_SIZE = 32
+NO_EMBEDDING = True
+MULTIPLE_CONV_LEVEL = True
 
 # COME FUNZIONA IL PROGRAMMA:
 # 1] Prendo in input i file da analizzare
@@ -68,16 +33,110 @@ def preprocessing(input_files):
 # 3] Tokenizzo i dati (le frasi) per parola con la funzione sent_tokenize() di NLTK
 # 4]
 
+def conv_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, trainable=False):
+    embedding_layer = Embedding(num_words,
+                                embedding_dim,
+                                input_length=max_sequence_length,
+                                trainable=trainable)
+
+    sequence_input = Input(shape=(max_sequence_length,), dtype='float32') if not no_embedding_input else Input(
+        shape=(max_sequence_length, 1), dtype='float32')
+    embedded_sequences = embedding_layer(sequence_input) if not no_embedding_input else sequence_input
+
+    convs = []
+    filter_sizes = [3, 4, 5]
+
+    for filter_size in filter_sizes:
+        l_conv = Conv1D(filters=128, kernel_size=filter_size, activation='relu')(embedded_sequences)
+        l_pool = MaxPooling1D(pool_size=3)(l_conv)
+        convs.append(l_pool)
+
+    l_merge = concatenate(convs, axis=1)
+    x = Dropout(0.5)(l_merge)
+    x = Flatten()(x)
+    x = Dense(256, activation='relu')(x)
+    x = Dense(128, activation='relu')(x)
+    x = Dense(64, activation='sigmoid')(x)
+    x = Dense(10, activation='relu')(x)
+    preds = Dense(1, activation='sigmoid')(x)
+
+    model = Model(sequence_input, preds)
+    model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+
+    model.summary()
+    return model
+
+
+def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input):
+    model = Sequential()
+    if not no_embedding_input:
+        model.add(Embedding(size, embedding_dim, input_length=max_sequence_length))
+    model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(max_sequence_length, 1)))
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(Dropout(0.5))
+    model.add(Flatten())
+    model.add(Dense(256, activation='relu'))
+    model.add(Dense(128, activation='relu'))
+    model.add(Dense(64, activation='sigmoid'))
+    model.add(Dense(1, activation='sigmoid'))
+    model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+
+    model.summary()
+    return model
+
+def exec_ml(data, multiple_conv=True, no_embedding_input=False):
+    print('Start ml')
+
+    x_train, x_test, y_train, y_test = data
+
+    x_train = tf.keras.preprocessing.sequence.pad_sequences(list(x_train), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
+    x_test = tf.keras.preprocessing.sequence.pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
+
+    if no_embedding_input:
+        x_train = np.expand_dims(x_train, axis=2)
+        x_test = np.expand_dims(x_test, axis=2)
+
+    print(x_train.shape)
+    print(x_test.shape)
+
+    model = conv_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, no_embedding_input,
+                     trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
+                                                                          EMBEDDING_DIM, no_embedding_input)
+
+    history = model.fit(x_train, y_train, validation_split=0.25, epochs=EPOCHS, verbose=1)
+
+    plt.plot(history.history['acc'])
+    plt.plot(history.history['val_acc'])
+    plt.plot(history.history['loss'])
+    plt.plot(history.history['val_loss'])
+    plt.title('Model metrics')
+    plt.ylabel('Metrics')
+    plt.xlabel('Epoch')
+    plt.legend(['Train Acc', 'Test Acc', 'Loss Train', 'Loss Test'], loc='upper left')
+    plt.show()
+
+    print(model.metrics_names)
+    print(model.evaluate(x_test, y_test))
+
 #
 def store_features(data, storage_name):
-    with open(storage_name + '.pkl', 'wb') as f:
+    with open('data/features/'+storage_name + '.pkl', 'wb') as f:
         pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
 
 #
 def load_features(storage_name):
-    with open(storage_name + '.pkl', 'rb') as f:
+    with open('data/features/'+storage_name + '.pkl', 'rb') as f:
         return pickle.load(f)
 
+#
+def to_data(data_matrix):
+    X = list(map(lambda x: x['features'], data_matrix))
+    y = list(map(lambda x: 0 if x['tag'].lower() == '0' else 1, data_matrix))
+    print('splitting....')
+    # Return splitted arrays or matrices into random train and test subsets.
+    return train_test_split(X, y, test_size=0.33)
 
 #
 def tree_height(root):
@@ -112,12 +171,13 @@ def get_heights_measure(paragraph, nlp):
 
 # La tokenizzazione suddivide il contenuto di una frase (o di un testo) in parole (o in frasi) chiamate appunto token.
 # La tokenizzazione aiuta a interpretare il significato del testo analizzando la sequenza delle parole.
+'''
 def tokenize_data(data):
     # Installiamo il modulo desiderato con il comando 'spacy download [nome_pipeline]'
     # Creiamo l'oggetto 'nlp' importando una tra le pipeline di spacy già addestrate per la lingua italiana.
-    #nlp = spacy.load("it_core_news_sm") # Modello indicato se si vuole efficienza nella computazione (13 MB)
+    nlp = spacy.load("it_core_news_sm") # Modello indicato se si vuole efficienza nella computazione (13 MB)
     #nlp = spacy.load("it_core_news_md") # (43 MB)
-    nlp = spacy.load("it_core_news_lg") # Modello indicato se si vuole accuratezza nella computazione (544 MB)
+    #nlp = spacy.load("it_core_news_lg") # Modello indicato se si vuole accuratezza nella computazione (544 MB)
 
     vector = []
     counter_verb = 0
@@ -173,15 +233,82 @@ def tokenize_data(data):
                 # paragraph_height_avg,
                 paragraph_height_avg / size,
             ]
-            print("Features:")
-            print(features)
-            print("Tokens vector:")
-            print(tokens.vector)
-            data.append(np.concatenate([features, tokens.vector]))
+            # print("Features:")
+            # print(features)
+            # print("Tokens vector:")
+            # print(tokens.vector)
+            # data.append(np.concatenate([features, tokens.vector]))
+            data['features'] = np.concatenate([features, tokens.vector])
+            # doc['features'] = features
+            # doc['features'] = tokens.vector
+            # return data
         except Exception as e:
             print(e)
 
     return data
+'''
+
+def tokenizer_func(nlp):
+    def inner(doc):
+        vector = []
+        counter_verb = 0
+        counter_adj = 0
+        counter_punct = 0
+        counter_stop = 0
+        counter_sym = 0
+        text = doc.get('post', None)
+        tokens = nlp(text)
+        for token in tokens:
+            vector.append(token.vector_norm)
+            if not token.is_stop:
+                counter_stop += 1
+            if token.is_punct:
+                counter_punct += 1
+            if token.pos_ == 'ADJ':
+                counter_adj += 1
+            if token.pos_ == 'VERB':
+                counter_verb += 1
+            if token.pos_ == 'SYM':
+                counter_sym += 1
+
+        max_of_vector = tokens.vector.max()
+        min_of_vector = tokens.vector.min()
+        avg_of_vector = np.mean(tokens.vector)
+        paragraph_height_max, paragraph_height_min, paragraph_height_avg = get_heights_measure(tokens, nlp)
+        size = len(vector)
+        features = [
+            size,
+            max_of_vector,
+            min_of_vector,
+            avg_of_vector,
+            # counter_punct,
+            counter_punct / size,
+            # counter_stop,
+            counter_stop / size,
+            # counter_verb,
+            counter_verb / size,
+            # counter_adj,
+            counter_adj / size,
+            # counter_sym,
+            counter_sym / size,
+            # paragraph_height_max,
+            paragraph_height_max / size,
+            # paragraph_height_min,
+            paragraph_height_min / size,
+            # paragraph_height_avg,
+            paragraph_height_avg / size,
+        ]
+        doc['features'] = np.concatenate([features, tokens.vector])
+        # doc['features'] = features
+        # doc['features'] = tokens.vector
+        return doc
+
+    return inner
+
+
+def tokenize_data(data):
+    nlp = spacy.load("it_core_news_sm")
+    return list(map(tokenizer_func(nlp), list(filter(lambda x: not x.get('post', None) is None, data))))
 
 # Utilizzando la librerie RE e il modulo stopwords di nltk, pulisco le frasi della tabella dai dati non necessari
 # Perchè farlo? Un post di FB o un Tweet potrebbe essere differente da un testo tradizionale: uso di caratteri speciali, parole abbreviate o non corrette etc.
@@ -230,8 +357,9 @@ def parse_data(file_path):
 
 # Recupero i parametri dalla libreria Click e li processo
 @click.command()
-@click.option('--input-files', '-m', prompt='Insert input file paths divided them by \',\' character')
-def get_input_files(input_files):
+@click.option('--input-files', '-m', prompt='Insert dataset file paths divided them by \',\' character')
+@click.option('--features-storage-name', '-m', prompt='Insert name of features storage file')
+def get_input_files(input_files, features_storage_name):
     data = []
     paths = input_files.split(", ") # Esempio di path: data/train/haspeede_FB-train.tsv
     for file_path in paths:
@@ -240,7 +368,10 @@ def get_input_files(input_files):
     print(data) # Vediamo i dati parsati nell'oggetto 'data'
     data = tokenize_data(data)
     #print(data)
-    store_features(data, 'ciao')
+    store_features(data, features_storage_name)
+    loaded_features = load_features(features_storage_name)
+    dataset = to_data(loaded_features)
+    exec_ml(dataset, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
 
 # Entry point
 if __name__ == '__main__':
