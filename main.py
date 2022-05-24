@@ -1,7 +1,6 @@
 import numpy as np  # Serie di tools utili alla computazione numerica (https://numpy.org)
 import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
-import click  # Tools per accettare parametri in input da riga di comando
 import re  # Modulo per regex
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
@@ -12,20 +11,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Embedding, Flatten, Conv1D, Dropout, MaxPooling1D, concatenate
 from sklearn.model_selection import train_test_split
 import spacy
-
-# CONSTANTI
-PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
-VERSION_NUMBER = "0.1";
-VERSION = '0.0.1.2'
-EMBEDDING_DIM = 64
-# MAX_SEQUENCE_LENGTH = 500
-MAX_SEQUENCE_LENGTH = 408
-# MAX_SEQUENCE_LENGTH = 12
-# MAX_SEQUENCE_LENGTH = 396
-EPOCHS = 100
-BATCH_SIZE = 32
-NO_EMBEDDING = True
-MULTIPLE_CONV_LEVEL = True
+import os
 
 # COME FUNZIONA IL PROGRAMMA:
 # 1] Prendo in input i file da analizzare
@@ -33,6 +19,25 @@ MULTIPLE_CONV_LEVEL = True
 # 3] Tokenizzo i dati (le frasi) per parola con la funzione sent_tokenize() di NLTK
 # 4]
 
+# CONSTANTI
+PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
+VERSION_NUMBER = "0.1";
+EMBEDDING_DIM = 64
+# MAX_SEQUENCE_LENGTH = 500
+MAX_SEQUENCE_LENGTH = 408
+# MAX_SEQUENCE_LENGTH = 12
+# MAX_SEQUENCE_LENGTH = 396
+# EPOCHS = 100
+EPOCHS = 2
+BATCH_SIZE = 32
+NO_EMBEDDING = True
+MULTIPLE_CONV_LEVEL = True
+
+# Configurazioni Top-level
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
+spacy.prefer_gpu() # Esegue le operazioni di spacy su GPU, se disponibile.
+
+#
 def conv_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, trainable=False):
     embedding_layer = Embedding(num_words,
                                 embedding_dim,
@@ -66,7 +71,7 @@ def conv_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, 
     model.summary()
     return model
 
-
+#
 def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input):
     model = Sequential()
     if not no_embedding_input:
@@ -86,6 +91,7 @@ def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input)
     model.summary()
     return model
 
+#
 def exec_ml(data, multiple_conv=True, no_embedding_input=False):
     print('Start ml')
 
@@ -98,19 +104,24 @@ def exec_ml(data, multiple_conv=True, no_embedding_input=False):
         x_train = np.expand_dims(x_train, axis=2)
         x_test = np.expand_dims(x_test, axis=2)
 
-    print(x_train.shape)
-    print(x_test.shape)
+    print('Train shape: '+str(x_train.shape))
+    print('Test shape: '+str(x_test.shape))
 
+    #try:
     model = conv_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, no_embedding_input,
-                     trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
-                                                                          EMBEDDING_DIM, no_embedding_input)
+                         trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
+                                                                              EMBEDDING_DIM, no_embedding_input)
 
-    history = model.fit(x_train, y_train, validation_split=0.25, epochs=EPOCHS, verbose=1)
+    x_array = np.array(x_train)
+    y_array = np.array(y_train)
+    history = model.fit(x_array, y_array, validation_split=0.25, epochs=EPOCHS, verbose=1)
 
-    plt.plot(history.history['acc'])
-    plt.plot(history.history['val_acc'])
+    plt.plot()
+    plt.plot(history.history['accuracy'])
+    plt.plot(history.history['val_accuracy'])
     plt.plot(history.history['loss'])
     plt.plot(history.history['val_loss'])
+
     plt.title('Model metrics')
     plt.ylabel('Metrics')
     plt.xlabel('Epoch')
@@ -118,7 +129,10 @@ def exec_ml(data, multiple_conv=True, no_embedding_input=False):
     plt.show()
 
     print(model.metrics_names)
-    print(model.evaluate(x_test, y_test))
+    #print(model.evaluate(x_test, y_test))
+    print(model.evaluate(x_array, y_array))
+    #except Exception as e:
+    #    print('--- ML ERROR ---')
 
 #
 def store_features(data, storage_name):
@@ -307,7 +321,9 @@ def tokenizer_func(nlp):
 
 
 def tokenize_data(data):
-    nlp = spacy.load("it_core_news_sm")
+    nlp = spacy.load("it_core_news_sm")  # Modello indicato se si vuole efficienza nella computazione (13 MB)
+    # nlp = spacy.load("it_core_news_md") # (43 MB)
+    # nlp = spacy.load("it_core_news_lg") # Modello indicato se si vuole accuratezza nella computazione (544 MB)
     return list(map(tokenizer_func(nlp), list(filter(lambda x: not x.get('post', None) is None, data))))
 
 # Utilizzando la librerie RE e il modulo stopwords di nltk, pulisco le frasi della tabella dai dati non necessari
@@ -355,25 +371,53 @@ def parse_data(file_path):
     except Exception as e:
         print(e)
 
-# Recupero i parametri dalla libreria Click e li processo
-@click.command()
-@click.option('--input-files', '-m', prompt='Insert dataset file paths divided them by \',\' character')
-@click.option('--features-storage-name', '-m', prompt='Insert name of features storage file')
-def get_input_files(input_files, features_storage_name):
+def get_features():
+    input_files = input(
+        "Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \' :\n=> ")
+    features_storage_name = input("Inserisci il nome del file che contiene le features estratte:\n=> ")
     data = []
-    paths = input_files.split(", ") # Esempio di path: data/train/haspeede_FB-train.tsv
+    paths = input_files.split(", ")  # Esempio di path: data/train/haspeede_FB-train.tsv
     for file_path in paths:
         print('- Parsing data: ' + file_path)
         data = data + parse_data(file_path)
-    print(data) # Vediamo i dati parsati nell'oggetto 'data'
+    # print(data) # Vediamo i dati parsati nell'oggetto 'data'
     data = tokenize_data(data)
-    #print(data)
+    # print(data)
     store_features(data, features_storage_name)
-    loaded_features = load_features(features_storage_name)
-    dataset = to_data(loaded_features)
-    exec_ml(dataset, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+    return features_storage_name
+
+#
+def get_user_input():
+    # Ottengo l' input degli utenti
+    print("Lista dei comandi eseguibili:")
+    print("[1] Estrazione delle features e addestramento ml")
+    print("[2] Estrazione e salvataggio delle features")
+    print("[3] Addestramento ml da set features esistente")
+
+    try:
+        selected_option = int(input("Digita il numero di una tra le opzioni disponibili => "))
+        if (selected_option == 1):
+            loaded_features = load_features(get_features())
+            dataset = to_data(loaded_features)
+            exec_ml(dataset, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+        elif (selected_option == 2):
+            feature_file = get_features()
+            print("I risultati dell\'estrazione delle features sono stati salvati nel file \'" + feature_file + ".pkl\'")
+        elif (selected_option == 3):
+            feature_file = input()
+            loaded_features = load_features(feature_file)
+            dataset = to_data(loaded_features)
+            exec_ml(dataset, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+        else:
+            print("Scelta non corretta!\n")
+            get_user_input()
+    except Exception as e:
+        print("Errore! Devi inserire un carattere numerico...\n\n")
+        get_user_input()
+
+    print("========================================")
 
 # Entry point
 if __name__ == '__main__':
     print(PROJECT_TITLE + ", program version: " + VERSION_NUMBER)
-    get_input_files()
+    get_user_input()

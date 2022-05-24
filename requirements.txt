@@ -1,6 +1,5 @@
 numpy
 pandas
-click
 nltk
 spacy
 keras
