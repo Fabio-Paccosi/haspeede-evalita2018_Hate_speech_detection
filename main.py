@@ -30,16 +30,17 @@ MAX_SEQUENCE_LENGTH = 408
 # EPOCHS = 100
 EPOCHS = 2
 BATCH_SIZE = 32
-NO_EMBEDDING = True
-MULTIPLE_CONV_LEVEL = True
+# NO_EMBEDDING = True
+# MULTIPLE_CONV_LEVEL = True
 
 # Configurazioni Top-level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
 spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 
 
-#
-def conv_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, trainable=False):
+# Setup della Convolutional Neural Network (CNN)
+# La CNN è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
+def set_convolution_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, trainable=False):
     embedding_layer = Embedding(num_words,
                                 embedding_dim,
                                 input_length=max_sequence_length,
@@ -74,8 +75,13 @@ def conv_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, 
 
 
 #
+'''
 def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input):
+    # Istanziamo un modello di tipo Sequential
+    # Questa tipologia rappresenta una pila dove ogni strato ha esattamente un tensore di ingresso ed uno di uscita.
     model = Sequential()
+
+    # Creiamo il modello passando la lista di layer al costruttore 'model'
     if not no_embedding_input:
         model.add(Embedding(size, embedding_dim, input_length=max_sequence_length))
     model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(max_sequence_length, 1)))
@@ -90,31 +96,37 @@ def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input)
     model.add(Dense(1, activation='sigmoid'))
     model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
 
+    # Stampiamo un riepilogo del network
     model.summary()
     return model
+'''
 
-
-#
-def exec_ml(data, log_level, multiple_conv=True, no_embedding_input=False):
+# Eseguo la procedura di Machine Learning
+def do_machine_learning(data, log_level): # , multiple_conv=True, no_embedding_input=False):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
 
+    # Assicuriamoci che tutte le sequenze nella lista hanno la stessa lunghezza
     x_train = tf.keras.preprocessing.sequence.pad_sequences(list(x_train), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
     x_test = tf.keras.preprocessing.sequence.pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
 
-    if no_embedding_input:
-        x_train = np.expand_dims(x_train, axis=2)
-        x_test = np.expand_dims(x_test, axis=2)
+    # Inserisce un nuovo asse che apparirà nella posizione scelta nella matrice.
+    # if no_embedding_input:
+    x_train = np.expand_dims(x_train, axis=2)
+    x_test = np.expand_dims(x_test, axis=2)
 
+    # Visualizziamo la forma delle matrici di addestramento e test
     if log_level == 1:
         print('Train shape: '+str(x_train.shape))
         print('Test shape: '+str(x_test.shape))
 
     try:
-        model = conv_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, no_embedding_input,
-                             trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
-                                                                                  EMBEDDING_DIM, no_embedding_input)
+        # Istanziamo la rete neurale di convoluzione
+        #model = set_convolution_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, no_embedding_input,
+        #                     trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
+        #                                                                          EMBEDDING_DIM, no_embedding_input)
+        model = set_convolution_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, True, trainable=True)
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
@@ -338,7 +350,7 @@ def get_features(log_level, model_level):
     store_features(data, features_storage_name)
     return features_storage_name
 
-#
+# Scegliamo il comportamento del codice e forniamo in input i dati necessari
 def get_user_input():
     # Ottengo l' input degli utenti
     print("Lista dei comandi eseguibili:")
@@ -353,7 +365,7 @@ def get_user_input():
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             loaded_features = load_features(get_features(log_level, model_level))
             dataset = to_data(loaded_features)
-            exec_ml(dataset, log_level, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         elif (selected_option == 2):
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             feature_file = get_features(log_level, model_level)
@@ -362,7 +374,7 @@ def get_user_input():
             feature_file = input()
             loaded_features = load_features(feature_file)
             dataset = to_data(loaded_features)
-            exec_ml(dataset, log_level, multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         else:
             print("Scelta non corretta!\n")
             get_user_input()
