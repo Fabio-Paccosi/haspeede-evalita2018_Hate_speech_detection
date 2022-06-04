@@ -22,7 +22,7 @@ import os
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
-EMBEDDING_DIM = 64
+# EMBEDDING_DIM = 64
 # MAX_SEQUENCE_LENGTH = 500
 MAX_SEQUENCE_LENGTH = 408
 # MAX_SEQUENCE_LENGTH = 12
@@ -37,24 +37,17 @@ BATCH_SIZE = 32
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
 spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 
+# Setup della Convolutional Neural Network (CNN) ispirata al modello di Yoon Kim utilizzato nel NLP
+def setup_yoonkim_net(max_sequence_length): #, size, embedding_dim, no_embedding_input):
+    print("Setup del modello di convoluzione di Yoon Kim...")
 
-# Setup della Convolutional Neural Network (CNN)
-# La CNN è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
-def set_convolution_net(max_sequence_length, num_words, embedding_dim, no_embedding_input, trainable=False):
-    embedding_layer = Embedding(num_words,
-                                embedding_dim,
-                                input_length=max_sequence_length,
-                                trainable=trainable)
-
-    sequence_input = Input(shape=(max_sequence_length,), dtype='float32') if not no_embedding_input else Input(
-        shape=(max_sequence_length, 1), dtype='float32')
-    embedded_sequences = embedding_layer(sequence_input) if not no_embedding_input else sequence_input
+    sequence_input = Input(shape=(max_sequence_length, 1), dtype='float32')
 
     convs = []
     filter_sizes = [3, 4, 5]
 
     for filter_size in filter_sizes:
-        l_conv = Conv1D(filters=128, kernel_size=filter_size, activation='relu')(embedded_sequences)
+        l_conv = Conv1D(filters=128, kernel_size=filter_size, activation='relu')(sequence_input)
         l_pool = MaxPooling1D(pool_size=3)(l_conv)
         convs.append(l_pool)
 
@@ -73,17 +66,13 @@ def set_convolution_net(max_sequence_length, num_words, embedding_dim, no_embedd
     model.summary()
     return model
 
+# Setup della Convolutional Neural Network (CNN)
+# La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
+def setup_convolution_net(max_sequence_length):
+    print("Setup della rete di convoluzione...")
 
-#
-'''
-def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input):
-    # Istanziamo un modello di tipo Sequential
-    # Questa tipologia rappresenta una pila dove ogni strato ha esattamente un tensore di ingresso ed uno di uscita.
     model = Sequential()
 
-    # Creiamo il modello passando la lista di layer al costruttore 'model'
-    if not no_embedding_input:
-        model.add(Embedding(size, embedding_dim, input_length=max_sequence_length))
     model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(max_sequence_length, 1)))
     model.add(MaxPooling1D(pool_size=2))
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
@@ -96,13 +85,11 @@ def get_conv_model(max_sequence_length, size, embedding_dim, no_embedding_input)
     model.add(Dense(1, activation='sigmoid'))
     model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
 
-    # Stampiamo un riepilogo del network
     model.summary()
     return model
-'''
 
 # Eseguo la procedura di Machine Learning
-def do_machine_learning(data, log_level): # , multiple_conv=True, no_embedding_input=False):
+def do_machine_learning(data, log_level, cnn_type): # , multiple_conv=True, no_embedding_input=False):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
@@ -122,11 +109,11 @@ def do_machine_learning(data, log_level): # , multiple_conv=True, no_embedding_i
         print('Test shape: '+str(x_test.shape))
 
     try:
-        # Istanziamo la rete neurale di convoluzione
-        #model = set_convolution_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, no_embedding_input,
-        #                     trainable=True) if multiple_conv else get_conv_model(MAX_SEQUENCE_LENGTH, len(x_train) + 1,
-        #                                                                          EMBEDDING_DIM, no_embedding_input)
-        model = set_convolution_net(MAX_SEQUENCE_LENGTH, len(x_train) + 1, EMBEDDING_DIM, True, trainable=True)
+        # Istanziamo la rete neurale di convoluzione o il modello di Yoon Kim
+        if cnn_type == 0:
+            model = setup_convolution_net(MAX_SEQUENCE_LENGTH)#, len(x_train) + 1, EMBEDDING_DIM, trainable=True)
+        else:
+            model = setup_yoonkim_net(MAX_SEQUENCE_LENGTH)
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
@@ -363,18 +350,20 @@ def get_user_input():
         log_level = int(input("Digita il livello di log che voi attivare [0 = nessuno, 1 = attivo] => "))
         if (selected_option == 1):
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
+            cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
             loaded_features = load_features(get_features(log_level, model_level))
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, cnn_type)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         elif (selected_option == 2):
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             feature_file = get_features(log_level, model_level)
             print("I risultati dell\'estrazione delle features sono stati salvati nel file \'" + feature_file + ".pkl\'")
         elif (selected_option == 3):
             feature_file = input()
+            cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
             loaded_features = load_features(feature_file)
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, cnn_type)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         else:
             print("Scelta non corretta!\n")
             get_user_input()
