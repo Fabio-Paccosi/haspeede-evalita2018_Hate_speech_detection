@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras import Input, Model
 from keras.models import Sequential
-from keras.layers import Dense, Embedding, Flatten, Conv1D, Dropout, MaxPooling1D, concatenate
+from keras.layers import Dense, Flatten, Conv1D, Conv2D, Dropout, MaxPooling1D, MaxPool2D, concatenate
 from sklearn.model_selection import train_test_split
 import spacy
 import os
@@ -22,74 +22,63 @@ import os
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
-# EMBEDDING_DIM = 64
-# MAX_SEQUENCE_LENGTH = 500
 MAX_SEQUENCE_LENGTH = 408
-# MAX_SEQUENCE_LENGTH = 12
-# MAX_SEQUENCE_LENGTH = 396
-# EPOCHS = 100
-EPOCHS = 2
 BATCH_SIZE = 32
-# NO_EMBEDDING = True
-# MULTIPLE_CONV_LEVEL = True
 
 # Configurazioni Top-level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
 spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
-
-# Setup della Convolutional Neural Network (CNN) ispirata al modello di Yoon Kim utilizzato nel NLP
-def setup_yoonkim_net(max_sequence_length): #, size, embedding_dim, no_embedding_input):
-    print("Setup del modello di convoluzione di Yoon Kim...")
-
-    sequence_input = Input(shape=(max_sequence_length, 1), dtype='float32')
-
-    convs = []
-    filter_sizes = [3, 4, 5]
-
-    for filter_size in filter_sizes:
-        l_conv = Conv1D(filters=128, kernel_size=filter_size, activation='relu')(sequence_input)
-        l_pool = MaxPooling1D(pool_size=3)(l_conv)
-        convs.append(l_pool)
-
-    l_merge = concatenate(convs, axis=1)
-    x = Dropout(0.5)(l_merge)
-    x = Flatten()(x)
-    x = Dense(256, activation='relu')(x)
-    x = Dense(128, activation='relu')(x)
-    x = Dense(64, activation='sigmoid')(x)
-    x = Dense(10, activation='relu')(x)
-    preds = Dense(1, activation='sigmoid')(x)
-
-    model = Model(sequence_input, preds)
-    model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
-
-    model.summary()
-    return model
 
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
 def setup_convolution_net(max_sequence_length):
     print("Setup della rete di convoluzione...")
 
+    # Definiamo il modello
     model = Sequential()
-
+    # Aggiungiamo il layer di convoluzione
+    # Con questo livello creiamo un kernel di convoluzione di una singola dimensione spaziale per produrre un tensore di output.
+    # Argomenti utilizzati:
+    # filters = la dimensione dello spazio di output, ossia il numero di filtri di output nella convoluzione
+    # kernel_size = specifica la lunghezza della finestra di convoluzione 1D
+    # activation = la funzione di attivazione da utilizzare
+    # input_shape = tensore 3+D
     model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(max_sequence_length, 1)))
+
+    # Aggiungiamo un pooling layer, che viene utilizzato per ridurre le dimensioni della mappa delle features
     model.add(MaxPooling1D(pool_size=2))
+
+    # Applichimo un ulteriore layer di convoluzione
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
+
+    # Applichiamo un ulteriore livello di pooling
     model.add(MaxPooling1D(pool_size=2))
+
+    # Il layer dropout imposta in modo casuale le unità di input su 0 con una frequenza di 0.5 a ogni passaggio durante il training
+    # Questo passaggio aiuta a prevenire l'overfitting, ossia quando il modello risulta complesso e c'è un'alta variabilità nella classificazione
     model.add(Dropout(0.5))
+
+    # Rimuoviamo tutte le dimensioni tranne una
     model.add(Flatten())
+
+    # I layer Dense è il naturale livello di rete neurale connessa.
+    # È il layer più comune ed esegue l'operazione seguente sull'input e restituisce l'output.
     model.add(Dense(256, activation='relu'))
     model.add(Dense(128, activation='relu'))
     model.add(Dense(64, activation='sigmoid'))
     model.add(Dense(1, activation='sigmoid'))
+
+    # Compiliamo il modello specificando:
+    # loss = funzione loss
+    # optimizer = ottimizzatore
+    # metrics = lista di metriche valutate dal modello
     model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
 
     model.summary()
     return model
 
 # Eseguo la procedura di Machine Learning
-def do_machine_learning(data, log_level, cnn_type): # , multiple_conv=True, no_embedding_input=False):
+def do_machine_learning(data, log_level, epochs): # , multiple_conv=True, no_embedding_input=False):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
@@ -109,15 +98,11 @@ def do_machine_learning(data, log_level, cnn_type): # , multiple_conv=True, no_e
         print('Test shape: '+str(x_test.shape))
 
     try:
-        # Istanziamo la rete neurale di convoluzione o il modello di Yoon Kim
-        if cnn_type == 0:
-            model = setup_convolution_net(MAX_SEQUENCE_LENGTH)#, len(x_train) + 1, EMBEDDING_DIM, trainable=True)
-        else:
-            model = setup_yoonkim_net(MAX_SEQUENCE_LENGTH)
+        model = setup_convolution_net(MAX_SEQUENCE_LENGTH)
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
-        history = model.fit(x_array, y_array, validation_split=0.25, epochs=EPOCHS, verbose=1)
+        history = model.fit(x_array, y_array, validation_split=0.25, epochs=epochs, verbose=1)
 
         plt.plot()
         plt.plot(history.history['accuracy'])
@@ -350,20 +335,22 @@ def get_user_input():
         log_level = int(input("Digita il livello di log che voi attivare [0 = nessuno, 1 = attivo] => "))
         if (selected_option == 1):
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
-            cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
+            #cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
+            epochs = int(input("Digita il numero di epoche di addestramento => "))
             loaded_features = load_features(get_features(log_level, model_level))
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, cnn_type)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, epochs)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         elif (selected_option == 2):
             model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             feature_file = get_features(log_level, model_level)
             print("I risultati dell\'estrazione delle features sono stati salvati nel file \'" + feature_file + ".pkl\'")
         elif (selected_option == 3):
             feature_file = input()
-            cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
+            #cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
+            epochs = int(input("Digita il numero di epoche di addestramento => "))
             loaded_features = load_features(feature_file)
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, cnn_type)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, epochs)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
         else:
             print("Scelta non corretta!\n")
             get_user_input()
