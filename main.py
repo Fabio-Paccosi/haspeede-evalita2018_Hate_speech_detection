@@ -6,18 +6,11 @@ from nltk.corpus import stopwords  # Import del vocabolario di stopwords della l
 import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from keras import Input, Model
 from keras.models import Sequential
-from keras.layers import Dense, Flatten, Conv1D, Conv2D, Dropout, MaxPooling1D, MaxPool2D, concatenate
+from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D
 from sklearn.model_selection import train_test_split
 import spacy
 import os
-
-# COME FUNZIONA IL PROGRAMMA:
-# 1] Prendo in input i file da analizzare
-# 2] Pulisco i dati (le frasi) da caratteri singoli, url, stopwords (parole che non hanno particolare senso) tramite la libreria NLTK etc.
-# 3] Tokenizzo i dati (le frasi) per parola con la funzione sent_tokenize() di NLTK
-# 4]
 
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
@@ -31,8 +24,8 @@ spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
-def setup_convolution_net(max_sequence_length):
-    print("Setup della rete di convoluzione...")
+def setup_convolution_net(activation_choice, optimizer_choice):
+    print("Setup della CNN...")
 
     # Definiamo il modello
     model = Sequential()
@@ -43,7 +36,7 @@ def setup_convolution_net(max_sequence_length):
     # kernel_size = specifica la lunghezza della finestra di convoluzione 1D
     # activation = la funzione di attivazione da utilizzare
     # input_shape = tensore 3+D
-    model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(max_sequence_length, 1)))
+    model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(MAX_SEQUENCE_LENGTH, 1)))
 
     # Aggiungiamo un pooling layer, che viene utilizzato per ridurre le dimensioni della mappa delle features
     model.add(MaxPooling1D(pool_size=2))
@@ -65,20 +58,42 @@ def setup_convolution_net(max_sequence_length):
     # È il layer più comune ed esegue l'operazione seguente sull'input e restituisce l'output.
     model.add(Dense(256, activation='relu'))
     model.add(Dense(128, activation='relu'))
-    model.add(Dense(64, activation='sigmoid'))
-    model.add(Dense(1, activation='sigmoid'))
+
+    # Impostiamo l'ottimizzatore in base alle scelte dell'utente
+    if (activation_choice == 1):
+        activation_choosen = "softmax"
+        logits_value = False
+    elif (activation_choice == 2):
+        activation_choosen = "sigmoid"
+        logits_value = False
+    else:
+        activation_choosen = None
+        logits_value = True
+
+    model.add(Dense(64, activation=activation_choosen))
+    model.add(Dense(1, activation=activation_choosen))
 
     # Compiliamo il modello specificando:
     # loss = funzione loss
     # optimizer = ottimizzatore
     # metrics = lista di metriche valutate dal modello
-    model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+
+    # Impostiamo l'ottimizzatore in base alle scelte dell'utente
+    if(optimizer_choice==0):
+        optimizer_choosen = "adam"
+    else:
+        optimizer_choosen = "adadelta"
+
+    # Compiliamo il modello
+    model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=logits_value),
+                  optimizer=optimizer_choosen,
+                  metrics=["accuracy"])
 
     model.summary()
     return model
 
 # Eseguo la procedura di Machine Learning
-def do_machine_learning(data, log_level, epochs): # , multiple_conv=True, no_embedding_input=False):
+def do_machine_learning(data, log_level, activation_choice, optimizer_choice, epochs):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
@@ -88,7 +103,6 @@ def do_machine_learning(data, log_level, epochs): # , multiple_conv=True, no_emb
     x_test = tf.keras.preprocessing.sequence.pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
 
     # Inserisce un nuovo asse che apparirà nella posizione scelta nella matrice.
-    # if no_embedding_input:
     x_train = np.expand_dims(x_train, axis=2)
     x_test = np.expand_dims(x_test, axis=2)
 
@@ -98,7 +112,7 @@ def do_machine_learning(data, log_level, epochs): # , multiple_conv=True, no_emb
         print('Test shape: '+str(x_test.shape))
 
     try:
-        model = setup_convolution_net(MAX_SEQUENCE_LENGTH)
+        model = setup_convolution_net(activation_choice, optimizer_choice)
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
@@ -231,8 +245,7 @@ def tokenizer_func(nlp):
             paragraph_height_avg / size,
         ]
         doc['features'] = np.concatenate([features, tokens.vector])
-        # doc['features'] = features
-        # doc['features'] = tokens.vector
+
         return doc
 
     return inner
@@ -287,9 +300,7 @@ def parse_data(file_path, log_level=0):
         with open(file_path, "r", encoding ="utf8") as f:
             reader = csv.reader(f, delimiter="\t")
             for i, line in enumerate(reader):
-                row = {}
-                row['post'] = sentence_clean(line[1])
-                row['tag'] = line[2]
+                row = {'post': sentence_clean(line[1]), 'tag': line[2]}
                 if len(row['post']) > 0 and len(row['tag']) > 0:
                     rows.append(row)
         return rows
@@ -299,8 +310,8 @@ def parse_data(file_path, log_level=0):
 # Estraggo le features dai dataset desiderati e salvo il risultato nel file .pkl scelto
 def get_features(log_level, model_level):
     input_files = input(
-        "Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \' :\n=> ")
-    features_storage_name = input("Inserisci il nome del file che contiene le features estratte:\n=> ")
+        "- Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \',\' : => ")
+    features_storage_name = input("- Inserisci il nome del file che contiene le features estratte: => ")
     data = []
     paths = input_files.split(", ")  # Esempio di path: data/train/haspeede_FB-train.tsv
     for file_path in paths:
@@ -325,32 +336,34 @@ def get_features(log_level, model_level):
 # Scegliamo il comportamento del codice e forniamo in input i dati necessari
 def get_user_input():
     # Ottengo l' input degli utenti
-    print("Lista dei comandi eseguibili:")
+    print("##### Lista dei comandi eseguibili #####")
     print("[1] Estrazione delle features e addestramento ml")
     print("[2] Estrazione e salvataggio delle features")
     print("[3] Addestramento ml da set features esistente")
 
     try:
-        selected_option = int(input("Digita il numero di una tra le opzioni disponibili => "))
-        log_level = int(input("Digita il livello di log che voi attivare [0 = nessuno, 1 = attivo] => "))
+        selected_option = int(input("- Digita il numero di una tra le opzioni disponibili => "))
+        log_level = int(input("- Digita il livello di log che voi attivare [0 = nessuno, 1 = attivo] => "))
         if (selected_option == 1):
-            model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
-            #cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
-            epochs = int(input("Digita il numero di epoche di addestramento => "))
+            model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
+            activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
+            optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
+            epochs = int(input("- Digita il numero di epoche di addestramento => "))
             loaded_features = load_features(get_features(log_level, model_level))
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, epochs)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs)
         elif (selected_option == 2):
-            model_level = int(input("Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
+            model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             feature_file = get_features(log_level, model_level)
             print("I risultati dell\'estrazione delle features sono stati salvati nel file \'" + feature_file + ".pkl\'")
         elif (selected_option == 3):
-            feature_file = input()
-            #cnn_type = int(input("Digita il modello di CNN che vuoi utilizzare [0 = Rete di convoluzione, 1 = Yoon Kim] => "))
-            epochs = int(input("Digita il numero di epoche di addestramento => "))
+            feature_file = input("- Digita il nome del file che contiene le features estratte => ")
+            activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
+            optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
+            epochs = int(input("- Digita il numero di epoche di addestramento => "))
             loaded_features = load_features(feature_file)
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, epochs)# , multiple_conv=MULTIPLE_CONV_LEVEL, no_embedding_input=NO_EMBEDDING)
+            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs)
         else:
             print("Scelta non corretta!\n")
             get_user_input()
