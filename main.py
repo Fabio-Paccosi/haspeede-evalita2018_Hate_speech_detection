@@ -2,14 +2,13 @@ import numpy as np  # Serie di tools utili alla computazione numerica (https://n
 import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
-
-from nltk import WordNetLemmatizer
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D
+from simplemma import simplemma
 from sklearn.model_selection import train_test_split
 import spacy
 import os
@@ -268,15 +267,16 @@ def sentence_clean(sent):
     # Rimuovo le stopweods dopo aver installato il pacchetto di risorse 'stopwords' di nltk con il comando 'nltk.download()'
     stops = stopwords.words('italian')
     for word in sentence.split():
+        # Uso la lemmatizzazione per ricondurre le parole al tema
         if word in stops:
             sentence = sentence.replace(word, '')
+        #Uso la lemmatizzazione per ricondurre le parole al tema
+        lemma = simplemma.lemmatize(word, lang='it')
+        sentence = sentence.replace(word, lemma)
     #Rimuovo gli spazi multipli
     sentence = re.sub(r'\s+', ' ', sentence)
     #Rimuovo gli spazi iniziali e finali
     sentence = sentence.strip()
-    #Uso la lemmatizzazione per ricondurre le parole al tema
-    first_lemmatizer = WordNetLemmatizer()
-    sentence = first_lemmatizer.lemmatize(sentence)
     #Ritorna la frase con i caratteri minuscoli
     return sentence.lower()
 
