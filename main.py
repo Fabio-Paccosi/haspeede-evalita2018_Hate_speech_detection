@@ -2,6 +2,8 @@ import numpy as np  # Serie di tools utili alla computazione numerica (https://n
 import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
+
+from nltk import WordNetLemmatizer
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
@@ -227,21 +229,13 @@ def tokenizer_func(nlp):
             max_of_vector,
             min_of_vector,
             avg_of_vector,
-            # counter_punct,
             counter_punct / size,
-            # counter_stop,
             counter_stop / size,
-            # counter_verb,
             counter_verb / size,
-            # counter_adj,
             counter_adj / size,
-            # counter_sym,
             counter_sym / size,
-            # paragraph_height_max,
             paragraph_height_max / size,
-            # paragraph_height_min,
             paragraph_height_min / size,
-            # paragraph_height_avg,
             paragraph_height_avg / size,
         ]
         doc['features'] = np.concatenate([features, tokens.vector])
@@ -280,9 +274,11 @@ def sentence_clean(sent):
     sentence = re.sub(r'\s+', ' ', sentence)
     #Rimuovo gli spazi iniziali e finali
     sentence = sentence.strip()
+    #Uso la lemmatizzazione per ricondurre le parole al tema
+    first_lemmatizer = WordNetLemmatizer()
+    sentence = first_lemmatizer.lemmatize(sentence)
     #Ritorna la frase con i caratteri minuscoli
     return sentence.lower()
-
 
 # Effettuo il parsing dei dati e ritorno un array di coppie di valori [post, tag] dove post rappresenta il testo dell'utente e tag i valori di 1 o 0, se presente un sentimento di odio nel testo o meno
 def parse_data(file_path, log_level=0):
@@ -307,7 +303,7 @@ def parse_data(file_path, log_level=0):
     except Exception as e:
         print(e)
 
-# Estraggo le features dai dataset desiderati e salvo il risultato nel file .pkl scelto
+# Estraggo le features dai dataset selezionati e salvo il risultato nel file .pkl scelto
 def get_features(log_level, model_level):
     input_files = input(
         "- Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \',\' : => ")
