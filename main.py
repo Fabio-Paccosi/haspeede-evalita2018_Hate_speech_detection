@@ -117,6 +117,7 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
+        # Addestriamo il modello
         history = model.fit(x_array, y_array, validation_split=0.25, epochs=epochs, verbose=1)
 
         plt.plot()
@@ -204,9 +205,10 @@ def tokenizer_func(nlp):
         counter_stop = 0
         counter_sym = 0
         text = doc.get('post', None)
-        tokens = nlp(text)
+        tokens = nlp(text) #Tokenizzo il testo del post
         for token in tokens:
-            vector.append(token.vector_norm)
+            vector.append(token.vector_norm) #La norma di un vettore complesso
+            #Analizzo la PoS
             if not token.is_stop:
                 counter_stop += 1
             if token.is_punct:
@@ -309,7 +311,7 @@ def get_features(log_level, model_level):
         "- Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \',\' : => ")
     features_storage_name = input("- Inserisci il nome del file che contiene le features estratte: => ")
     data = []
-    paths = input_files.split(", ")  # Esempio di path: data/train/haspeede_FB-train.tsv
+    paths = input_files.split(", ")
     for file_path in paths:
         print('-> Eseguo il parsing del set: ' + file_path)
         data = data + parse_data(file_path)
@@ -330,6 +332,7 @@ def get_features(log_level, model_level):
     return features_storage_name
 
 # Scegliamo il comportamento del codice e forniamo in input i dati necessari
+#  Esempio di path: data/train/haspeede_FB-train.tsv
 def get_user_input():
     # Ottengo l' input degli utenti
     print("##### Lista dei comandi eseguibili #####")
