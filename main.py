@@ -18,7 +18,7 @@ import os
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
-EMBEDDING_DIM = 64
+EMBEDDING_DIM = 256
 MAX_SEQUENCE_LENGTH = 408
 BATCH_SIZE = 32
 
@@ -33,6 +33,7 @@ spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 def setup_convolution_net(activation_choice, optimizer_choice):
     print("Setup della CNN...")
 
+    '''
     model = Sequential()
     model.add(Embedding(len(vocab), 100, input_length=MAX_SEQUENCE_LENGTH))
     model.add(Conv1D(filters=32, kernel_size=8, activation='relu'))
@@ -73,13 +74,9 @@ def setup_convolution_net(activation_choice, optimizer_choice):
 
     # I layer Dense è il naturale livello di rete neurale connessa.
     # È il layer più comune ed esegue l'operazione seguente sull'input e restituisce l'output.
-    model.add(Dense(256, activation='relu'))
-    model.add(Dense(128, activation='relu'))
+    # model.add(Dense(10, activation='relu'))
+    # model.add(Dense(1, activation='sigmoid'))
 
-    model.add(Dense(64, activation=activation_choosen))
-    model.add(Dense(1, activation=activation_choosen))
-
-    '''
     # Impostiamo l'ottimizzatore in base alle scelte dell'utente
     if (activation_choice == 1):
         activation_choosen = "softmax"
@@ -90,6 +87,9 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     else:
         activation_choosen = None
         logits_value = True
+
+    model.add(Dense(10, activation='relu'))
+    model.add(Dense(1, activation=activation_choosen))
 
     # Compiliamo il modello specificando:
     # loss = funzione loss
@@ -107,6 +107,7 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=logits_value),
                   optimizer=optimizer_choosen,
                   metrics=["accuracy"])
+    #model.compile(loss='binary_crossentropy', optimizer=optimizer_choosen, metrics=['accuracy'])
 
     print(model.summary())
 
@@ -138,7 +139,7 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
         x_array = np.array(x_train)
         y_array = np.array(y_train)
         # Addestriamo il modello
-        history = model.fit(x_array, y_array, validation_split=0.25, epochs=epochs, verbose=1)
+        history = model.fit(x_array, y_array, validation_split=0.33, epochs=epochs, verbose=1)
 
         plt.plot()
         plt.plot(history.history['accuracy'])
@@ -244,24 +245,24 @@ def tokenizer_func(nlp):
             if token.pos_ == 'SYM':
                 counter_sym += 1
 
-        max_of_vector = 1 #tokens.vector.max()
-        min_of_vector = 1 #tokens.vector.min()
-        avg_of_vector = 1 #np.mean(tokens.vector)
+        max_of_vector = tokens.vector.max()
+        min_of_vector = tokens.vector.min()
+        avg_of_vector = np.mean(tokens.vector)
         paragraph_height_max, paragraph_height_min, paragraph_height_avg = get_heights_measure(tokens, nlp)
         size = len(vector)
         features = [
-            1, #size,
-            1, #max_of_vector,
-            1, #min_of_vector,
-            1, #avg_of_vector,
-            1, #counter_punct / size,
-            1, #counter_stop / size,
-            1, #counter_verb / size,
-            1, #counter_adj / size,
-            1, #counter_sym / size,
-            1, #paragraph_height_max / size,
-            1, #paragraph_height_min / size,
-            1, #paragraph_height_avg / size,
+            abs(size),
+            abs(max_of_vector),
+            abs(min_of_vector),
+            abs(avg_of_vector),
+            counter_punct / size,
+            counter_stop / size,
+            counter_verb / size,
+            counter_adj / size,
+            counter_sym / size,
+            paragraph_height_max / size,
+            paragraph_height_min / size,
+            paragraph_height_avg / size,
         ]
         doc['features'] = np.concatenate([features])#tokens.vector])
 
