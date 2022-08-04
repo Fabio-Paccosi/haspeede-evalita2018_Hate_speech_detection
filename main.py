@@ -3,25 +3,26 @@ import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
 from keras_preprocessing.sequence import pad_sequences
+from keras_preprocessing.text import Tokenizer
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D
+from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D, Embedding
 from simplemma import simplemma
 from sklearn.model_selection import train_test_split
 import spacy
 import os
 
 # CONSTANTI
-from tensorflow import one_hot
-
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
 EMBEDDING_DIM = 64
 MAX_SEQUENCE_LENGTH = 408
 BATCH_SIZE = 32
+
+vocab = {}
 
 # Configurazioni Top-level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
@@ -32,8 +33,18 @@ spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 def setup_convolution_net(activation_choice, optimizer_choice):
     print("Setup della CNN...")
 
+    model = Sequential()
+    model.add(Embedding(len(vocab), 100, input_length=MAX_SEQUENCE_LENGTH))
+    model.add(Conv1D(filters=32, kernel_size=8, activation='relu'))
+    model.add(MaxPooling1D(pool_size=2))
+    model.add(Flatten())
+    model.add(Dense(10, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+    '''
     # Definiamo il modello
     model = Sequential()
+
+    model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH))
 
     # Aggiungiamo il layer di convoluzione
     # Con questo livello creiamo un kernel di convoluzione di una singola dimensione spaziale per produrre un tensore di output.
@@ -65,6 +76,10 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     model.add(Dense(256, activation='relu'))
     model.add(Dense(128, activation='relu'))
 
+    model.add(Dense(64, activation=activation_choosen))
+    model.add(Dense(1, activation=activation_choosen))
+
+    '''
     # Impostiamo l'ottimizzatore in base alle scelte dell'utente
     if (activation_choice == 1):
         activation_choosen = "softmax"
@@ -75,9 +90,6 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     else:
         activation_choosen = None
         logits_value = True
-
-    model.add(Dense(64, activation=activation_choosen))
-    model.add(Dense(1, activation=activation_choosen))
 
     # Compiliamo il modello specificando:
     # loss = funzione loss
@@ -90,10 +102,13 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     else:
         optimizer_choosen = "adadelta"
 
+
     # Compiliamo il modello
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=logits_value),
                   optimizer=optimizer_choosen,
                   metrics=["accuracy"])
+
+    print(model.summary())
 
     model.summary()
     return model
@@ -203,6 +218,7 @@ def get_heights_measure(paragraph, nlp):
 # La tokenizzazione aiuta a interpretare il significato del testo analizzando la sequenza delle parole.
 def tokenizer_func(nlp):
     def inner(doc):
+        vocab_index = 1
         vector = []
         counter_verb = 0
         counter_adj = 0
@@ -212,6 +228,9 @@ def tokenizer_func(nlp):
         text = doc.get('post', None)
         tokens = nlp(text) #Tokenizzo il testo del post
         for token in tokens:
+            if token not in vocab:
+                vocab[token] = vocab_index
+                vocab_index += 1
             vector.append(token.vector_norm) #La norma di un vettore complesso
             #Analizzo la PoS
             if not token.is_stop:
@@ -225,30 +244,31 @@ def tokenizer_func(nlp):
             if token.pos_ == 'SYM':
                 counter_sym += 1
 
-        max_of_vector = tokens.vector.max()
-        min_of_vector = tokens.vector.min()
-        avg_of_vector = np.mean(tokens.vector)
+        max_of_vector = 1 #tokens.vector.max()
+        min_of_vector = 1 #tokens.vector.min()
+        avg_of_vector = 1 #np.mean(tokens.vector)
         paragraph_height_max, paragraph_height_min, paragraph_height_avg = get_heights_measure(tokens, nlp)
         size = len(vector)
         features = [
-            size,
-            max_of_vector,
-            min_of_vector,
-            avg_of_vector,
-            counter_punct / size,
-            counter_stop / size,
-            counter_verb / size,
-            counter_adj / size,
-            counter_sym / size,
-            paragraph_height_max / size,
-            paragraph_height_min / size,
-            paragraph_height_avg / size,
+            1, #size,
+            1, #max_of_vector,
+            1, #min_of_vector,
+            1, #avg_of_vector,
+            1, #counter_punct / size,
+            1, #counter_stop / size,
+            1, #counter_verb / size,
+            1, #counter_adj / size,
+            1, #counter_sym / size,
+            1, #paragraph_height_max / size,
+            1, #paragraph_height_min / size,
+            1, #paragraph_height_avg / size,
         ]
-        doc['features'] = np.concatenate([features, tokens.vector])
+        doc['features'] = np.concatenate([features])#tokens.vector])
 
         return doc
 
     return inner
+
 
 # La funzione carica un modello della libreria spacy nell'oggetto chiamato 'nlp' e richiama la funzione 'tokenizer_func' con quell'oggetto su ogni elemento/frase del dataset
 # I seguenti modelli di spacy, devono essere prima scaricati e installati con il comando 'spacy download [nome_modello]' per poter essere utilizzati
@@ -330,7 +350,9 @@ def get_features(log_level, model_level):
 
     # Visualizziamo i dati tokenizzati
     if log_level == 1:
-        print(data)
+        print("Vocab lenght: "+str(len(vocab)));
+        print("Vocab: "+str(vocab))
+        print("Tokenize data: " + str(data))
 
     # Salvo il risultato dell'estrazione
     store_features(data, features_storage_name)
@@ -382,4 +404,5 @@ def get_user_input():
 # Entry point
 if __name__ == '__main__':
     print(PROJECT_TITLE + ", program version: " + VERSION_NUMBER)
+    vocab['pad'] = 0
     get_user_input()
