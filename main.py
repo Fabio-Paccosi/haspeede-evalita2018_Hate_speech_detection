@@ -2,6 +2,7 @@ import numpy as np  # Serie di tools utili alla computazione numerica (https://n
 import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
+from keras_preprocessing.sequence import pad_sequences
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
@@ -14,8 +15,11 @@ import spacy
 import os
 
 # CONSTANTI
+from tensorflow import one_hot
+
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
+EMBEDDING_DIM = 64
 MAX_SEQUENCE_LENGTH = 408
 BATCH_SIZE = 32
 
@@ -30,6 +34,7 @@ def setup_convolution_net(activation_choice, optimizer_choice):
 
     # Definiamo il modello
     model = Sequential()
+
     # Aggiungiamo il layer di convoluzione
     # Con questo livello creiamo un kernel di convoluzione di una singola dimensione spaziale per produrre un tensore di output.
     # Argomenti utilizzati:
@@ -100,8 +105,8 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
     x_train, x_test, y_train, y_test = data
 
     # Assicuriamoci che tutte le sequenze nella lista hanno la stessa lunghezza
-    x_train = tf.keras.preprocessing.sequence.pad_sequences(list(x_train), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
-    x_test = tf.keras.preprocessing.sequence.pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='float32', truncating='post')
+    x_train = pad_sequences(list(x_train), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='int32', truncating='post')
+    x_test = pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='int32', truncating='post')
 
     # Inserisce un nuovo asse che apparirà nella posizione scelta nella matrice.
     x_train = np.expand_dims(x_train, axis=2)
@@ -158,7 +163,7 @@ def to_data(data_matrix):
     y = list(map(lambda x: 0 if x['tag'].lower() == '0' else 1, data_matrix))
     print('- Eseguo lo la divisione dei dati...')
     # Richiamo il metodo della libreria sklearn per dividere i set passando la dimensione desiderata del set di test
-    return train_test_split(X, y, test_size=0.33)
+    return train_test_split(X, y, test_size=0.25)
 
 
 #
