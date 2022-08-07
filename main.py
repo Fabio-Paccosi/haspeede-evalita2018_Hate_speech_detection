@@ -96,7 +96,6 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=logits_value),
                   optimizer=optimizer_choosen,
                   metrics=["accuracy"])
-    #model.compile(loss='binary_crossentropy', optimizer=optimizer_choosen, metrics=['accuracy'])
 
     print(model.summary())
 
