@@ -18,8 +18,8 @@ import os
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
 VERSION_NUMBER = "0.1"
-EMBEDDING_DIM = 256
-MAX_SEQUENCE_LENGTH = 408
+EMBEDDING_DIM = 256 #128
+MAX_SEQUENCE_LENGTH = -1
 BATCH_SIZE = 32
 
 vocab = {}
@@ -31,17 +31,8 @@ spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
 def setup_convolution_net(activation_choice, optimizer_choice):
-    print("Setup della CNN...")
+    print("Setup della CNN... "+str(MAX_SEQUENCE_LENGTH))
 
-    '''
-    model = Sequential()
-    model.add(Embedding(len(vocab), 100, input_length=MAX_SEQUENCE_LENGTH))
-    model.add(Conv1D(filters=32, kernel_size=8, activation='relu'))
-    model.add(MaxPooling1D(pool_size=2))
-    model.add(Flatten())
-    model.add(Dense(10, activation='relu'))
-    model.add(Dense(1, activation='sigmoid'))
-    '''
     # Definiamo il modello
     model = Sequential()
 
@@ -72,11 +63,6 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     # Rimuoviamo tutte le dimensioni tranne una
     model.add(Flatten())
 
-    # I layer Dense è il naturale livello di rete neurale connessa.
-    # È il layer più comune ed esegue l'operazione seguente sull'input e restituisce l'output.
-    # model.add(Dense(10, activation='relu'))
-    # model.add(Dense(1, activation='sigmoid'))
-
     # Impostiamo l'ottimizzatore in base alle scelte dell'utente
     if (activation_choice == 1):
         activation_choosen = "softmax"
@@ -88,6 +74,8 @@ def setup_convolution_net(activation_choice, optimizer_choice):
         activation_choosen = None
         logits_value = True
 
+    # I layer Dense è il naturale livello di rete neurale connessa.
+    # È il layer più comune ed esegue l'operazione seguente sull'input e restituisce l'output.
     model.add(Dense(10, activation='relu'))
     model.add(Dense(1, activation=activation_choosen))
 
@@ -214,7 +202,6 @@ def get_heights_measure(paragraph, nlp):
     except Exception as e:
         return 0
 
-
 # La tokenizzazione suddivide il contenuto di una frase (o di un testo) in parole (o in frasi) chiamate appunto token.
 # La tokenizzazione aiuta a interpretare il significato del testo analizzando la sequenza delle parole.
 def tokenizer_func(nlp):
@@ -228,6 +215,13 @@ def tokenizer_func(nlp):
         counter_sym = 0
         text = doc.get('post', None)
         tokens = nlp(text) #Tokenizzo il testo del post
+
+        # Imposto la variabile maxlen
+        global MAX_SEQUENCE_LENGTH
+        if MAX_SEQUENCE_LENGTH < len(tokens):
+            MAX_SEQUENCE_LENGTH = len(tokens)
+
+        # Analizzo ogni singolo token e lo inserisco (se non presente) nel vocabolario globale
         for token in tokens:
             if token not in vocab:
                 vocab[token] = vocab_index
@@ -264,7 +258,7 @@ def tokenizer_func(nlp):
             paragraph_height_min / size,
             paragraph_height_avg / size,
         ]
-        doc['features'] = np.concatenate([features])#tokens.vector])
+        doc['features'] = np.concatenate([features])
 
         return doc
 
