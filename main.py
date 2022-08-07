@@ -17,9 +17,9 @@ import os
 
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
-VERSION_NUMBER = "0.1"
+VERSION_NUMBER = "1.0"
 EMBEDDING_DIM = 256 #128
-MAX_SEQUENCE_LENGTH = -1
+MAX_WORD_LENGTH = -1
 BATCH_SIZE = 32
 
 vocab = {}
@@ -31,12 +31,13 @@ spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
 def setup_convolution_net(activation_choice, optimizer_choice):
-    print("Setup della CNN... "+str(MAX_SEQUENCE_LENGTH))
+    print("Setup della CNN... ")
 
     # Definiamo il modello
     model = Sequential()
 
-    model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_SEQUENCE_LENGTH))
+    # Il primo layer effettua l'addestramento basato sula tecnica word embedding
+    model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_WORD_LENGTH))
 
     # Aggiungiamo il layer di convoluzione
     # Con questo livello creiamo un kernel di convoluzione di una singola dimensione spaziale per produrre un tensore di output.
@@ -45,7 +46,7 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     # kernel_size = specifica la lunghezza della finestra di convoluzione 1D
     # activation = la funzione di attivazione da utilizzare
     # input_shape = tensore 3+D
-    model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(MAX_SEQUENCE_LENGTH, 1)))
+    model.add(Conv1D(filters=128, kernel_size=5, activation='relu', input_shape=(MAX_WORD_LENGTH, 1)))
 
     # Aggiungiamo un pooling layer, che viene utilizzato per ridurre le dimensioni della mappa delle features
     model.add(MaxPooling1D(pool_size=2))
@@ -109,8 +110,8 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
     x_train, x_test, y_train, y_test = data
 
     # Assicuriamoci che tutte le sequenze nella lista hanno la stessa lunghezza
-    x_train = pad_sequences(list(x_train), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='int32', truncating='post')
-    x_test = pad_sequences(list(x_test), maxlen=MAX_SEQUENCE_LENGTH, value=0.0, dtype='int32', truncating='post')
+    x_train = pad_sequences(list(x_train), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32', truncating='post')
+    x_test = pad_sequences(list(x_test), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32', truncating='post')
 
     # Inserisce un nuovo asse che apparirà nella posizione scelta nella matrice.
     x_train = np.expand_dims(x_train, axis=2)
@@ -170,7 +171,6 @@ def to_data(data_matrix):
     return train_test_split(X, y, test_size=0.25)
 
 
-#
 def tree_height(root):
     """
     Find the maximum depth (height) of the dependency parse of a spacy sentence by starting with its root
@@ -184,7 +184,6 @@ def tree_height(root):
         return 1 + max(tree_height(x) for x in root.children)
 
 
-#
 def get_heights_measure(paragraph, nlp):
     """
     Computes average height of parse trees for each sentence in paragraph.
@@ -210,6 +209,11 @@ def tokenizer_func(nlp):
         vector = []
         counter_verb = 0
         counter_adj = 0
+        counter_adp = 0
+        counter_aux = 0
+        counter_noun = 0
+        counter_num = 0
+        counter_propn = 0
         counter_punct = 0
         counter_stop = 0
         counter_sym = 0
@@ -217,9 +221,9 @@ def tokenizer_func(nlp):
         tokens = nlp(text) #Tokenizzo il testo del post
 
         # Imposto la variabile maxlen
-        global MAX_SEQUENCE_LENGTH
-        if MAX_SEQUENCE_LENGTH < len(tokens):
-            MAX_SEQUENCE_LENGTH = len(tokens)
+        global MAX_WORD_LENGTH
+        if MAX_WORD_LENGTH < len(tokens):
+            MAX_WORD_LENGTH = len(tokens)
 
         # Analizzo ogni singolo token e lo inserisco (se non presente) nel vocabolario globale
         for token in tokens:
@@ -232,12 +236,22 @@ def tokenizer_func(nlp):
                 counter_stop += 1
             if token.is_punct:
                 counter_punct += 1
+            if token.pos_ == 'PROPN':
+                counter_propn += 1
             if token.pos_ == 'ADJ':
                 counter_adj += 1
+            if token.pos_ == 'ADP':
+                counter_adp += 1
+            if token.pos_ == 'AUX':
+                counter_aux += 1
             if token.pos_ == 'VERB':
                 counter_verb += 1
             if token.pos_ == 'SYM':
                 counter_sym += 1
+            if token.pos_ == 'NOUN':
+                counter_noun += 1
+            if token.pos_ == 'NUM':
+                counter_num += 1
 
         max_of_vector = tokens.vector.max()
         min_of_vector = tokens.vector.min()
@@ -251,9 +265,14 @@ def tokenizer_func(nlp):
             abs(avg_of_vector),
             counter_punct / size,
             counter_stop / size,
+            counter_propn / size,
             counter_verb / size,
+            counter_adp / size,
             counter_adj / size,
+            counter_aux / size,
+            counter_noun / size,
             counter_sym / size,
+            counter_num / size,
             paragraph_height_max / size,
             paragraph_height_min / size,
             paragraph_height_avg / size,
