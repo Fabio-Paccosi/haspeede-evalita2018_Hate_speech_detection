@@ -14,6 +14,7 @@ from simplemma import simplemma
 from sklearn.model_selection import train_test_split
 import spacy
 import os
+import random
 
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
@@ -144,6 +145,22 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
         if log_level == 1:
             print(model.metrics_names)
             print(model.evaluate(x_array, y_array))
+
+            file_path = "data/test/haspeede_FB-test.tsv"
+            with open(file_path, "r", encoding="utf8") as f:
+                reader = csv.reader(f, delimiter="\t")
+                for i, line in enumerate(reader):
+                    randomlist = []
+                    for i in range(0, 77):
+                        l = []
+                        for i in range(0, 77):
+                            n = random.randint(1, 100)
+                            l.append(n)
+                        randomlist.append(l)
+
+                    vecs = randomlist
+                    pred = model.predict(vecs)
+                    print('Text:'+line[1]+ 'Pred: '+str(pred))
     except Exception as e:
         print('--- ML ERROR ---')
         print(str(e))
