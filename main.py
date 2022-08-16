@@ -3,7 +3,6 @@ import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
 from keras_preprocessing.sequence import pad_sequences
-from keras_preprocessing.text import Tokenizer
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
@@ -14,7 +13,6 @@ from simplemma import simplemma
 from sklearn.model_selection import train_test_split
 import spacy
 import os
-import random
 
 # CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
