@@ -22,23 +22,24 @@ VERSION_NUMBER = "1.0"
 EMBEDDING_DIM = 256 #128
 MAX_WORD_LENGTH = -1
 BATCH_SIZE = 32
-
+nlp = None
 vocab = {}
 
 # Configurazioni Top-level
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
 spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
 
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
-def setup_convolution_net(activation_choice, optimizer_choice):
+def setup_convolution_net(activation_choice, optimizer_choice, embedding):
     print("Setup della CNN... ")
 
     # Definiamo il modello
     model = Sequential()
 
     # Il primo layer effettua l'addestramento basato sula tecnica word embedding
-    model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_WORD_LENGTH))
+    if embedding is True:
+        model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_WORD_LENGTH))
 
     # Aggiungiamo il layer di convoluzione
     # Con questo livello creiamo un kernel di convoluzione di una singola dimensione spaziale per produrre un tensore di output.
@@ -104,10 +105,15 @@ def setup_convolution_net(activation_choice, optimizer_choice):
     return model
 
 # Eseguo la procedura di Machine Learning
-def do_machine_learning(data, log_level, activation_choice, optimizer_choice, epochs):
+def do_machine_learning(data, log_level, activation_choice, optimizer_choice, epochs, prediction, embedding):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
+
+    global MAX_WORD_LENGTH
+    # Il primo layer effettua l'addestramento basato sula tecnica word embedding
+    if embedding is not True:
+        MAX_WORD_LENGTH = 256
 
     # Assicuriamoci che tutte le sequenze nella lista hanno la stessa lunghezza
     x_train = pad_sequences(list(x_train), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32', truncating='post')
@@ -123,7 +129,7 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
         print('Test shape: '+str(x_test.shape))
 
     try:
-        model = setup_convolution_net(activation_choice, optimizer_choice)
+        model = setup_convolution_net(activation_choice, optimizer_choice, embedding)
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
@@ -146,21 +152,22 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
             print(model.metrics_names)
             print(model.evaluate(x_array, y_array))
 
-            file_path = "data/test/haspeede_FB-test.tsv"
+        # Es. "data/test/haspeede_FB-test.tsv"
+        if prediction == 1:
+            print("---> Previsione dei dati di test:")
+            file_path = input("-> Inserisci il path di un dataset di test => ")
             with open(file_path, "r", encoding="utf8") as f:
                 reader = csv.reader(f, delimiter="\t")
                 for i, line in enumerate(reader):
-                    randomlist = []
-                    for i in range(0, 77):
-                        l = []
-                        for i in range(0, 77):
-                            n = random.randint(1, 100)
-                            l.append(n)
-                        randomlist.append(l)
+                    cleaned_line = sentence_clean(line[1])
+                    vec = [tokenize_test(cleaned_line, nlp)]
+                    vec = pad_sequences(list(vec), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32',
+                                        truncating='post')
+                    # Restituisce la previsione per un singolo batch
+                    pred_value = model.predict_on_batch(vec)
+                    pred = "SI" if pred_value > 0.35 else "NO"
+                    print('- '+line[1] + ' ---> [ Incitamento all\' odio? ' + pred+' ]\n')
 
-                    vecs = randomlist
-                    pred = model.predict(vecs)
-                    print('Text:'+line[1]+ 'Pred: '+str(pred))
     except Exception as e:
         print('--- ML ERROR ---')
         print(str(e))
@@ -216,6 +223,71 @@ def get_heights_measure(paragraph, nlp):
         return np.max(heights), np.min(heights), np.mean(heights)
     except Exception as e:
         return 0
+
+def tokenize_test(text, nlp):
+    vector = []
+    counter_verb = 0
+    counter_adj = 0
+    counter_adp = 0
+    counter_aux = 0
+    counter_noun = 0
+    counter_num = 0
+    counter_propn = 0
+    counter_punct = 0
+    counter_stop = 0
+    counter_sym = 0
+    tokens = nlp(text)  # Tokenizzo il testo del post
+
+    # Analizzo ogni singolo token e lo inserisco (se non presente) nel vocabolario globale
+    for token in tokens:
+        vector.append(token.vector_norm)  # La norma di un vettore complesso
+        # Analizzo la PoS
+        if not token.is_stop:
+            counter_stop += 1
+        if token.is_punct:
+            counter_punct += 1
+        if token.pos_ == 'PROPN':
+            counter_propn += 1
+        if token.pos_ == 'ADJ':
+            counter_adj += 1
+        if token.pos_ == 'ADP':
+            counter_adp += 1
+        if token.pos_ == 'AUX':
+            counter_aux += 1
+        if token.pos_ == 'VERB':
+            counter_verb += 1
+        if token.pos_ == 'SYM':
+            counter_sym += 1
+        if token.pos_ == 'NOUN':
+            counter_noun += 1
+        if token.pos_ == 'NUM':
+            counter_num += 1
+
+    max_of_vector = tokens.vector.max()
+    min_of_vector = tokens.vector.min()
+    avg_of_vector = np.mean(tokens.vector)
+    paragraph_height_max, paragraph_height_min, paragraph_height_avg = get_heights_measure(tokens, nlp)
+    size = len(vector)
+    features = [
+        abs(size),
+        abs(max_of_vector),
+        abs(min_of_vector),
+        abs(avg_of_vector),
+        counter_punct / size,
+        counter_stop / size,
+        counter_propn / size,
+        counter_verb / size,
+        counter_adp / size,
+        counter_adj / size,
+        counter_aux / size,
+        counter_noun / size,
+        counter_sym / size,
+        counter_num / size,
+        paragraph_height_max / size,
+        paragraph_height_min / size,
+        paragraph_height_avg / size,
+    ]
+    return np.concatenate([features])
 
 # La tokenizzazione suddivide il contenuto di una frase (o di un testo) in parole (o in frasi) chiamate appunto token.
 # La tokenizzazione aiuta a interpretare il significato del testo analizzando la sequenza delle parole.
@@ -303,6 +375,7 @@ def tokenizer_func(nlp):
 # La funzione carica un modello della libreria spacy nell'oggetto chiamato 'nlp' e richiama la funzione 'tokenizer_func' con quell'oggetto su ogni elemento/frase del dataset
 # I seguenti modelli di spacy, devono essere prima scaricati e installati con il comando 'spacy download [nome_modello]' per poter essere utilizzati
 def tokenize_data(data, model_level):
+    global nlp
     if model_level == 0:
         nlp = spacy.load("it_core_news_sm")  # Modello indicato se si vuole efficienza nella computazione (13 MB)
     elif model_level == 1:
@@ -363,7 +436,7 @@ def parse_data(file_path, log_level=0):
 # Estraggo le features dai dataset selezionati e salvo il risultato nel file .pkl scelto
 def get_features(log_level, model_level):
     input_files = input(
-        "- Inserisci i path dei dataset (uno o più) che desidere analizzare, divisi dal carattere \',\' : => ")
+        "- Inserisci i path dei dataset (uno o più) con cui eseguire il train del modello, divisi dal carattere \',\' : => ")
     features_storage_name = input("- Inserisci il nome del file che contiene le features estratte: => ")
     data = []
     paths = input_files.split(", ")
@@ -390,6 +463,7 @@ def get_features(log_level, model_level):
 
 # Scegliamo il comportamento del codice e forniamo in input i dati necessari
 #  Esempio di path: data/train/haspeede_FB-train.tsv
+#  data/train/haspeede_TW-train.tsv
 def get_user_input():
     # Ottengo l' input degli utenti
     print("##### Lista dei comandi eseguibili #####")
@@ -405,9 +479,10 @@ def get_user_input():
             activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
             optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
             epochs = int(input("- Digita il numero di epoche di addestramento => "))
+            prediction = int(input("- Vuoi effettuare anche una previsione su un set di test? [0 = no, 1 = si] => "))
             loaded_features = load_features(get_features(log_level, model_level))
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs)
+            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, prediction, True)
         elif (selected_option == 2):
             model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
             feature_file = get_features(log_level, model_level)
@@ -416,10 +491,13 @@ def get_user_input():
             feature_file = input("- Digita il nome del file che contiene le features estratte => ")
             activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
             optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
+            #global MAX_WORD_LENGTH
+            #MAX_WORD_LENGTH = int(input("- Digita la dimensione del vocabolario da analizzare => "))
             epochs = int(input("- Digita il numero di epoche di addestramento => "))
+            prediction = int(input("- Vuoi effettuare anche una previsione su un set di test? [0 = no, 1 = si] =>"))
             loaded_features = load_features(feature_file)
             dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs)
+            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, prediction, False)
         else:
             print("Scelta non corretta!\n")
             get_user_input()
