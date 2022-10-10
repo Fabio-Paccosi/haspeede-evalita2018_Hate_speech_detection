@@ -2,39 +2,65 @@ import numpy as np  # Serie di tools utili alla computazione numerica (https://n
 import csv #Modulo per la lettura di file .csv e .tsv
 import pandas as pd  # Tools per processare e manipolare file di dati (https://pandas.pydata.org)
 import re  # Modulo per regex
+
+from keras import regularizers
 from keras_preprocessing.sequence import pad_sequences
 from nltk.corpus import stopwords  # Import del vocabolario di stopwords della libreria Natural Language ToolKit per il Language Processing
 import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from keras.models import Sequential
-from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D, Embedding
+from keras.models import Sequential, Model
+from keras.layers import Dense, Flatten, Conv1D, Dropout, MaxPooling1D, Embedding, GlobalMaxPooling1D, Activation, \
+    BatchNormalization, Reshape, MaxPool2D, Conv2D, concatenate
 from simplemma import simplemma
 from sklearn.model_selection import train_test_split
+import h5py
 import spacy
 import os
+from tensorflow.python.keras import Input
+from tensorflow.python.keras.layers import Concatenate
 
-# CONSTANTI
 PROJECT_TITLE = "haspeede@evalita 2018 Project by Fabio Paccosi matr. 307616"
-VERSION_NUMBER = "1.0"
-EMBEDDING_DIM = 256 #128
-MAX_WORD_LENGTH = -1
-BATCH_SIZE = 32
+VERSION_NUMBER = "2.0"
+EMBEDDING_DIM =  32 #16 #32
+MAX_WORD_LENGTH = 450 #256 #32
 nlp = None
 vocab = {}
 
 # Configurazioni Top-level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # Nascondo dalla console i messaggi che manda TensorFlow in cui ci avverte che la nostra esecuzione potrebbe essere più veloce utilizzano hardware specifico
-spacy.prefer_gpu()# Esegue le operazioni di spacy su GPU, se disponibile.
+spacy.prefer_gpu() # Esegue le operazioni di spacy su GPU, se disponibile.
 
 # Setup della Convolutional Neural Network (CNN)
 # La rete di convoluzione è un tipo di rete neurale artificiale feed-forward adatta, come nel nostro caso, nell'elaborazione del linguaggio naturale
-def setup_convolution_net(activation_choice, optimizer_choice, embedding):
+def setup_convolution_net(embedding, MAX_SEQUENCE_LENGTH):
     print("Setup della CNN... ")
 
     # Definiamo il modello
     model = Sequential()
 
+    # Adding the embedding layer which will take in maximum of 450 words as input and provide a 32 dimensional output of those words which belong in the top_words dictionary
+    model.add(Embedding(7000, EMBEDDING_DIM, input_length=MAX_WORD_LENGTH))
+
+    model.add(Conv1D(4, 5, padding='same', activation='relu', input_shape=(MAX_WORD_LENGTH, 1)))
+    model.add(Conv1D(8, 5, padding='same', activation='relu'))
+    model.add(MaxPooling1D())
+    model.add(Dropout(0.05))
+
+    model.add(Conv1D(8, 5, padding='same', activation='relu'))
+    model.add(MaxPooling1D())
+    model.add(Dropout(0.05))
+
+    model.add(Conv1D(16, 5, padding='same', activation='relu'))
+    model.add(MaxPooling1D())
+    model.add(Dropout(0.05))
+
+    model.add(Flatten())
+    model.add(Dense(8, activation='relu'))
+    model.add(Dropout(0.05))
+    model.add(Dense(1, activation='sigmoid'))
+
+    '''
     # Il primo layer effettua l'addestramento basato sula tecnica word embedding
     if embedding is True:
         model.add(Embedding(len(vocab), EMBEDDING_DIM, input_length=MAX_WORD_LENGTH))
@@ -90,28 +116,25 @@ def setup_convolution_net(activation_choice, optimizer_choice, embedding):
         optimizer_choosen = "adam"
     else:
         optimizer_choosen = "adadelta"
-
+    '''
 
     # Compiliamo il modello
+    '''
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=logits_value),
                   optimizer=optimizer_choosen,
                   metrics=["accuracy"])
-
+    '''
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     print(model.summary())
 
     model.summary()
     return model
 
-# Eseguo la procedura di Machine Learning
-def do_machine_learning(data, log_level, activation_choice, optimizer_choice, epochs, prediction, embedding):
+# Eseguo il setup della CNN e
+def do_machine_learning(data, log_level, epochs, model_name, embedding):
     print('Inizio la procedura di Machine Learning...')
 
     x_train, x_test, y_train, y_test = data
-
-    global MAX_WORD_LENGTH
-    # Il primo layer effettua l'addestramento basato sula tecnica word embedding
-    if embedding is not True:
-        MAX_WORD_LENGTH = 256
 
     # Assicuriamoci che tutte le sequenze nella lista hanno la stessa lunghezza
     x_train = pad_sequences(list(x_train), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32', truncating='post')
@@ -127,13 +150,18 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
         print('Test shape: '+str(x_test.shape))
 
     try:
-        model = setup_convolution_net(activation_choice, optimizer_choice, embedding)
+        model = setup_convolution_net(embedding, x_train.shape[1])
 
         x_array = np.array(x_train)
         y_array = np.array(y_train)
         # Addestriamo il modello
-        history = model.fit(x_array, y_array, validation_split=0.33, epochs=epochs, verbose=1)
+        history = model.fit(x_array, y_array, validation_split=0.33, epochs=epochs, batch_size=32, verbose=1)
 
+        # Salvo il modello
+        filepath = "data/model/"+model_name+".h5"
+        model.save(filepath)
+
+        # Stampo i risultati del modello
         plt.plot()
         plt.plot(history.history['accuracy'])
         plt.plot(history.history['val_accuracy'])
@@ -150,79 +178,13 @@ def do_machine_learning(data, log_level, activation_choice, optimizer_choice, ep
             print(model.metrics_names)
             print(model.evaluate(x_array, y_array))
 
-        # Es. "data/test/haspeede_FB-test.tsv"
-        if prediction == 1:
-            print("---> Previsione dei dati di test:")
-            file_path = input("-> Inserisci il path di un dataset di test => ")
-            with open(file_path, "r", encoding="utf8") as f:
-                reader = csv.reader(f, delimiter="\t")
-                for i, line in enumerate(reader):
-                    cleaned_line = sentence_clean(line[1])
-                    vec = [tokenize_test(cleaned_line, nlp)]
-                    vec = pad_sequences(list(vec), maxlen=MAX_WORD_LENGTH, value=0.0, dtype='float32',
-                                        truncating='post')
-                    # Restituisce la previsione per un singolo batch
-                    pred_value = model.predict_on_batch(vec)
-                    pred = "SI" if pred_value > 0.35 else "NO"
-                    print('- '+line[1] + ' ---> [ Incitamento all\' odio? ' + pred+' ]\n')
-
     except Exception as e:
         print('--- ML ERROR ---')
         print(str(e))
 
 
-# Metodo per il salvataggio del file .pkl contenente le features estratte
-def store_features(data, storage_name):
-    with open('data/features/'+storage_name + '.pkl', 'wb') as f:
-        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
-
-
-# Metodo per il caricamento del file .pkl contenente le features estratte
-def load_features(storage_name):
-    with open('data/features/'+storage_name + '.pkl', 'rb') as f:
-        return pickle.load(f)
-
-
-# Metodo che ritorna le matrici divise in set di addestramento e test casuali
-def to_data(data_matrix):
-    X = list(map(lambda x: x['features'], data_matrix))
-    y = list(map(lambda x: 0 if x['tag'].lower() == '0' else 1, data_matrix))
-    print('- Eseguo lo la divisione dei dati...')
-    # Richiamo il metodo della libreria sklearn per dividere i set passando la dimensione desiderata del set di test
-    return train_test_split(X, y, test_size=0.25)
-
-
-def tree_height(root):
-    """
-    Find the maximum depth (height) of the dependency parse of a spacy sentence by starting with its root
-    Code adapted from https://stackoverflow.com/questions/35920826/how-to-find-height-for-non-binary-tree
-    :param root: spacy.tokens.token.Token
-    :return: int, maximum height of sentence's dependency parse tree
-    """
-    if not list(root.children):
-        return 1
-    else:
-        return 1 + max(tree_height(x) for x in root.children)
-
-
-def get_heights_measure(paragraph, nlp):
-    """
-    Computes average height of parse trees for each sentence in paragraph.
-    :param paragraph: spacy doc object or str
-    :return: float
-    """
-    try:
-        if type(paragraph) == str:
-            doc = nlp(paragraph)
-        else:
-            doc = paragraph
-        roots = [sent.root for sent in doc.sents]
-        heights = [tree_height(root) for root in roots]
-        return np.max(heights), np.min(heights), np.mean(heights)
-    except Exception as e:
-        return 0
-
-def tokenize_test(text, nlp):
+def tokenize_test(text):
+    global nlp
     vector = []
     counter_verb = 0
     counter_adj = 0
@@ -287,8 +249,80 @@ def tokenize_test(text, nlp):
     ]
     return np.concatenate([features])
 
-# La tokenizzazione suddivide il contenuto di una frase (o di un testo) in parole (o in frasi) chiamate appunto token.
-# La tokenizzazione aiuta a interpretare il significato del testo analizzando la sequenza delle parole.
+def run_data_on_model(model_name):
+    #print(dataset)
+    loaded_model = tf.keras.models.load_model("data/model/"+model_name+".h5")
+    file_path = input("-> Inserisci il path di un dataset di test => ")
+    global nlp
+    nlp = spacy.load("it_core_news_md")
+    with open(file_path, "r", encoding="utf8") as f:
+        reader = csv.reader(f, delimiter="\t")
+        for i, line in enumerate(reader):
+            cleaned_line = sentence_clean(line[1])
+            vec = [tokenizer_func(cleaned_line)]
+            vec = pad_sequences(list(vec), maxlen=77, value=0.0, dtype='float32',
+                                truncating='post')
+            # Restituisce la previsione per un singolo batch
+            pred_value = loaded_model.predict_on_batch(vec)
+            pred = "SI" if pred_value > 0.5 else "NO"
+            print('- ' + line[1] + ' ---> [ Incitamento all\' odio? ' + pred + ' ]')
+
+# Metodo per il salvataggio del file .pkl che contiene le features estratte
+def store_features(data, storage_name):
+    with open('data/features/'+storage_name + '.pkl', 'wb') as f:
+        pickle.dump(data, f, pickle.HIGHEST_PROTOCOL)
+
+
+# Metodo per il caricamento del file .pkl contenente le features estratte
+def load_features(storage_name):
+    with open('data/features/'+storage_name + '.pkl', 'rb') as f:
+        return pickle.load(f)
+
+
+# Metodo che ritorna le matrici o gli array divisi in set di addestramento e test casuali
+def to_data(data_matrix, is_test):
+    if is_test == False:
+        X = list(map(lambda x: x['features'], data_matrix))
+        y = list(map(lambda x: 0 if x['tag'].lower() == '0' else 1, data_matrix))
+        print('- Eseguo lo la divisione dei dati...')
+        # Richiamo il metodo della libreria sklearn per dividere i set passando la dimensione desiderata del set di test
+        return train_test_split(X, y, test_size=0.20)
+    else:
+        #X = list(map(lambda x: x['features'], data_matrix))
+        #return train_test_split(X, test_size=0.2)
+        return list(map(lambda x: x['features'], data_matrix))
+
+
+def tree_height(root):
+    """
+    Find the maximum depth (height) of the dependency parse of a spacy sentence by starting with its root
+    Code adapted from https://stackoverflow.com/questions/35920826/how-to-find-height-for-non-binary-tree
+    :param root: spacy.tokens.token.Token
+    :return: int, maximum height of sentence's dependency parse tree
+    """
+    if not list(root.children):
+        return 1
+    else:
+        return 1 + max(tree_height(x) for x in root.children)
+
+
+def get_heights_measure(paragraph, nlp):
+    """
+    Computes average height of parse trees for each sentence in paragraph.
+    :param paragraph: spacy doc object or str
+    :return: float
+    """
+    try:
+        if type(paragraph) == str:
+            doc = nlp(paragraph)
+        else:
+            doc = paragraph
+        roots = [sent.root for sent in doc.sents]
+        heights = [tree_height(root) for root in roots]
+        return np.max(heights), np.min(heights), np.mean(heights)
+    except Exception as e:
+        return 0
+
 def tokenizer_func(nlp):
     def inner(doc):
         vocab_index = 1
@@ -306,12 +340,7 @@ def tokenizer_func(nlp):
         text = doc.get('post', None)
         tokens = nlp(text) #Tokenizzo il testo del post
 
-        # Imposto la variabile maxlen
-        global MAX_WORD_LENGTH
-        if MAX_WORD_LENGTH < len(tokens):
-            MAX_WORD_LENGTH = len(tokens)
-
-        # Analizzo ogni singolo token e lo inserisco (se non presente) nel vocabolario globale
+        # Analizzo ogni singolo token
         for token in tokens:
             if token not in vocab:
                 vocab[token] = vocab_index
@@ -364,13 +393,10 @@ def tokenizer_func(nlp):
             paragraph_height_avg / size,
         ]
         doc['features'] = np.concatenate([features])
-
         return doc
-
     return inner
 
-
-# La funzione carica un modello della libreria spacy nell'oggetto chiamato 'nlp' e richiama la funzione 'tokenizer_func' con quell'oggetto su ogni elemento/frase del dataset
+# La funzione carica un modello della libreria spacy nell'oggetto chiamato 'nlp' e richiama la funzione 'tokenizer_func' con quell'oggetto su ogni elemento/frase dell'oggetto data
 # I seguenti modelli di spacy, devono essere prima scaricati e installati con il comando 'spacy download [nome_modello]' per poter essere utilizzati
 def tokenize_data(data, model_level):
     global nlp
@@ -387,12 +413,15 @@ def tokenize_data(data, model_level):
 # Utilizzando la librerie RE e il modulo stopwords di nltk, pulisco le frasi della tabella dai dati non necessari
 # Perchè farlo? Un post di FB o un Tweet potrebbe essere differente da un testo tradizionale: uso di caratteri speciali, parole abbreviate o non corrette etc.
 # L'obiettivo è quello di rimuovere quindi i caratteri speciali, link e tutto quello che non aggiunge significato alla frase
+
 def sentence_clean(sent):
+    # Rimuovo i link
+    sentence = re.sub(r'http\S+', '', sent)
     # Rimuovo i caratteri di punteggiatura e i numeri
     sentence = re.sub('[^a-zA-Z]', ' ', sent)
     # Rimuovo i caratteri singoli
     sentence = re.sub(r"\s+[a-zA-Z]\s+", ' ', sentence)
-    # Rimuovo le stopweods dopo aver installato il pacchetto di risorse 'stopwords' di nltk con il comando 'nltk.download()'
+    # Rimuovo le stopweods dopo aver installato il pacchetto di risorse 'stopwords' di nltk
     stops = stopwords.words('italian')
     for word in sentence.split():
         # Uso la lemmatizzazione per ricondurre le parole al tema
@@ -409,7 +438,8 @@ def sentence_clean(sent):
     return sentence.lower()
 
 # Effettuo il parsing dei dati e ritorno un array di coppie di valori [post, tag] dove post rappresenta il testo dell'utente e tag i valori di 1 o 0, se presente un sentimento di odio nel testo o meno
-def parse_data(file_path, log_level=0):
+
+def parse_data(file_path, log_level, is_test):
     try:
         rows = []
         # Utilizzo il separatore '\t' proprio del file .tsv
@@ -419,43 +449,53 @@ def parse_data(file_path, log_level=0):
                            error_bad_lines=False,
                            warn_bad_lines=False)
         if log_level == 1:
+            print("Is test? "+str(is_test))
             print("-- Training Set File infos:" % file.columns, file.shape, len(file))
 
         with open(file_path, "r", encoding ="utf8") as f:
             reader = csv.reader(f, delimiter="\t")
             for i, line in enumerate(reader):
-                row = {'post': sentence_clean(line[1]), 'tag': line[2]}
-                if len(row['post']) > 0 and len(row['tag']) > 0:
-                    rows.append(row)
+                if is_test == False:
+                    row = {'post': sentence_clean(line[1]), 'tag': line[2]}
+                    if len(row['post']) > 0 and len(row['tag']) > 0:
+                        rows.append(row)
+                else:
+                    row = {'post': sentence_clean(line[1])}
+                    if len(row['post']) > 0:
+                        rows.append(row)
         return rows
     except Exception as e:
         print(e)
 
-# Estraggo le features dai dataset selezionati e salvo il risultato nel file .pkl scelto
-def get_features(log_level, model_level):
-    input_files = input(
-        "- Inserisci i path dei dataset (uno o più) con cui eseguire il train del modello, divisi dal carattere \',\' : => ")
-    features_storage_name = input("- Inserisci il nome del file che contiene le features estratte: => ")
+# Estraggo le features dai dataset selezionati e salvo il risultato in un file .pkl
+def get_features(log_level, model_level, is_test):
+    if is_test == False:
+        input_files = input("- Inserisci i path dei dataset (uno o più) con cui eseguire il train del modello, divisi dal carattere \',\' : => ")
+        features_storage_name = input("- Inserisci il nome del file che contiene le features estratte: => ")
+    else:
+        input_files = input("- Inserisci i path dei dataset (uno o più) con cui eseguire il test del modello, divisi dal carattere \',\' : => ")
+        features_storage_name = "test"
+
     data = []
     paths = input_files.split(", ")
     for file_path in paths:
         print('-> Eseguo il parsing del set: ' + file_path)
-        data = data + parse_data(file_path)
+        data = data + parse_data(file_path, log_level, is_test)
 
     # Vediamo i dati parsati nell'oggetto 'data'
     if log_level == 1:
         print(data)
 
-    # Tokenizziamo i dati dell'array
+    # Tokenizziamo i dati dell'array ed estraimo le features
     data = tokenize_data(data, model_level)
 
-    # Visualizziamo i dati tokenizzati
+    # Visualizziamo i log
     if log_level == 1:
         print("Vocab lenght: "+str(len(vocab)));
         print("Vocab: "+str(vocab))
-        print("Tokenize data: " + str(data))
+        print("Features data: " + str(data))
 
-    # Salvo il risultato dell'estrazione
+    # Salvo il risultato dell'estrazione in un file .pkl e ritorno il path alla funzione load_features()
     store_features(data, features_storage_name)
     return features_storage_name
 
@@ -465,37 +505,44 @@ def get_features(log_level, model_level):
 def get_user_input():
     # Ottengo l' input degli utenti
     print("##### Lista dei comandi eseguibili #####")
-    print("[1] Estrazione delle features e addestramento ml")
+    print("[1] Estrazione delle features e addestramento di un modello ML")
     print("[2] Estrazione e salvataggio delle features")
-    print("[3] Addestramento ml da set features esistente")
+    print("[3] Addestramento di un modello ML da un set features esistente")
+    print("[4] Esecuzione di un modello allenato su un dataset")
 
     try:
         selected_option = int(input("- Digita il numero di una tra le opzioni disponibili => "))
         log_level = int(input("- Digita il livello di log che voi attivare [0 = nessuno, 1 = attivo] => "))
         if (selected_option == 1):
             model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
-            activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
-            optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
+            #activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
+            #optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
             epochs = int(input("- Digita il numero di epoche di addestramento => "))
-            prediction = int(input("- Vuoi effettuare anche una previsione su un set di test? [0 = no, 1 = si] => "))
-            loaded_features = load_features(get_features(log_level, model_level))
-            dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, prediction, True)
+            model_name = input("- Digita il nome del file salvato per il modello  ML => ")
+            loaded_features = load_features(get_features(log_level, model_level, False))
+            dataset = to_data(loaded_features, False)
+            #do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, model_name, True)
+            do_machine_learning(dataset, log_level, epochs, model_name, True)
         elif (selected_option == 2):
             model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di addestramento [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
-            feature_file = get_features(log_level, model_level)
+            feature_file = get_features(log_level, model_level, False)
             print("I risultati dell\'estrazione delle features sono stati salvati nel file \'" + feature_file + ".pkl\'")
         elif (selected_option == 3):
             feature_file = input("- Digita il nome del file che contiene le features estratte => ")
-            activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
-            optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
-            #global MAX_WORD_LENGTH
-            #MAX_WORD_LENGTH = int(input("- Digita la dimensione del vocabolario da analizzare => "))
+            #activation_choice = int(input("- Digita la funzione di attivazione che vuoi utilizzare [0 = nessuna, 1 = softmax, 2 = sigmoid] => "))
+            #optimizer_type = int(input("- Digita quale ottimizzatore vuoi utilizzare [0 = adam, 1 = adadelta] => "))
             epochs = int(input("- Digita il numero di epoche di addestramento => "))
-            prediction = int(input("- Vuoi effettuare anche una previsione su un set di test? [0 = no, 1 = si] =>"))
+            model_name = input("- Digita il nome del file salvato per il modello ML  =>")
             loaded_features = load_features(feature_file)
-            dataset = to_data(loaded_features)
-            do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, prediction, False)
+            dataset = to_data(loaded_features, False)
+            #do_machine_learning(dataset, log_level, activation_choice, optimizer_type, epochs, model_name, False)
+            do_machine_learning(dataset, log_level, epochs, model_name, False)
+        elif (selected_option == 4):
+            model_name = input("- Digita il nome del modello ML da caricare =>")
+            model_level = int(input("- Digita il livello di accuratezza del modello della pipeline di test [0 = efficiente, 1 = intemedio, 2 = accurato] => "))
+            #loaded_features = load_features(get_features(log_level, model_level, True))
+            #dataset = to_data(loaded_features, True)
+            run_data_on_model(model_name)#(dataset, model_name)
         else:
             print("Scelta non corretta!\n")
             get_user_input()

@@ -7,3 +7,4 @@ matplotlib
 sklearn
 tensorflow
 simplemma
+h5py
